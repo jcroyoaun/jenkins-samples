@@ -1,0 +1,53 @@
+// Read from file and request input
+pipeline {
+    agent {
+        label 'any'
+    }
+    parameters {
+      text(name: 'VARS_CONTENT', defaultValue: 'baseUrl: ', description: 'URL for the tests.')
+    }
+    stages {
+        stage('Create vars.yaml file') {
+          steps {
+            writeFile file: "${WORKSPACE}/textfile.txt", text: params.VARS_CONTENT
+          }
+        }
+         stage('Check File Contents') {
+            steps {
+                script {
+                    def inputFile = "${WORKSPACE}/textfile.txt" // Replace with your text file path
+
+                    // Read the file contents and look for the keywords
+                    sh '''
+                        grep -oE '\\${__P\\([^)]+\\)}' "${WORKSPACE}/textfile.txt" | awk -F awk -F'[()]' '{ print "-G" $2 }' > keyword_found.txt
+                        ls
+                    '''
+                    def keywordsFound = readFile('keyword_found.txt').trim().split('\n')
+
+                    def yamlContent = ""
+                    keywordsFound.each { keyword ->
+                        if (keyword.trim()) {
+                            def userInput = input message: "Please provide the required information for ${keyword}:", parameters: [text(defaultValue: 'default_value', description: "Enter your input for ${keyword}:", name: keyword)]
+                            echo "User input for ${keyword}: ${userInput}"
+                            yamlContent += "${keyword}: ${userInput}\n"
+                        }
+                    }
+
+                    if (yamlContent) {
+                        writeFile file: "${WORKSPACE}/input_values.yaml", text: yamlContent
+                        echo "YAML file created with input values."
+                    } else {
+                        echo 'Neither OSTRICH nor CHICKEN was found in the text file.'
+                    }
+                }
+            }
+        }
+        stage('Final stage') {
+            steps {
+                sh '''
+                cat "${WORKSPACE}/input_values.yaml"
+                '''
+            }
+        }
+    }
+}
